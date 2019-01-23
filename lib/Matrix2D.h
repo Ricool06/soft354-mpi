@@ -6,10 +6,10 @@
 template <typename T>
 struct Matrix2D {
     T* elements;
-    size_t width;
-    size_t height;
+    unsigned width;
+    unsigned height;
 
-    Matrix2D(T* elements, size_t width, size_t height): width(width), height(height), elements(elements) {}
+    Matrix2D(T* elements, unsigned width, unsigned height): width(width), height(height), elements(elements) {}
 };
 
 

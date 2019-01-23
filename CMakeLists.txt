@@ -22,6 +22,7 @@ add_subdirectory(test)
 configure_file(img/tiger.png img/tiger.png COPYONLY)
 configure_file(img/flowers.png img/flowers.png COPYONLY)
 configure_file(img/hmm.png img/hmm.png COPYONLY)
+configure_file(img/tiny.png img/tiny.png COPYONLY)
 
 add_executable(soft354_mpi main.cpp)
 target_link_libraries(${EXECUTABLE} ${LIBRARY})

@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 #include "Matrix2D.h"
 #include "Matrix2D.h"
-#include "Canny.h"
-#include "Canny.h"
+#include "Gauss.h"
+#include "Gauss.h"
 
 TEST(GrayscaleFilter, ShouldFilterSinglePixelImage) {
     unsigned int width = 1, height = 1;
@@ -11,7 +11,7 @@ TEST(GrayscaleFilter, ShouldFilterSinglePixelImage) {
     std::vector<unsigned char> pixel = {50, 100, 150, 51};
     // Therefore, resulting grayscale intensity should be 20:
     std::vector<unsigned char> expectedGrayscalePixels = {20, 20, 20, 255};
-    std::vector<unsigned char> actualGrayscalePixels = Canny::generateGreyscaleImage(pixel, width, height);
+    std::vector<unsigned char> actualGrayscalePixels = Gauss::generateGreyscaleImage(pixel, width, height);
 
     EXPECT_EQ(actualGrayscalePixels[0], expectedGrayscalePixels[0]);
     EXPECT_EQ(actualGrayscalePixels[1], expectedGrayscalePixels[1]);
@@ -33,7 +33,7 @@ TEST(GrayscaleFilter, ShouldFilterMultiPixelImage) {
                                                           40, 40, 40, 255,
                                                           60, 60, 60, 255,
                                                           80, 80, 80, 255};
-    std::vector<unsigned char> actualGrayscalePixels = Canny::generateGreyscaleImage(pixels, width, height);
+    std::vector<unsigned char> actualGrayscalePixels = Gauss::generateGreyscaleImage(pixels, width, height);
 
     int i = 0;
     for (auto const& expectedRgbaValue: expectedGrayscalePixels) {

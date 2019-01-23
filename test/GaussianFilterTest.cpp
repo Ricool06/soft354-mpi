@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include <lodepng.h>
-#include "Canny.h"
+#include "Gauss.h"
 
 // TODO: test properly
 TEST(GaussianFilter, BlursPixels) {
@@ -18,7 +18,7 @@ TEST(GaussianFilter, BlursPixels) {
 //                                         100, 100, 100, 255};
     // Therefore, resulting grayscale intensity should be 20:
 //    std::vector<unsigned char> expectedGrayscalePixels = {100, 100, 100, 100};
-    std::vector<unsigned char> blurredPixels = Canny::generateGaussianBlurredImage(pixels, width, height, 0.89);
+    std::vector<unsigned char> blurredPixels = Gauss::generateGaussianBlurredImage(pixels, width, height, 0.89);
 
     unsigned error = lodepng::encode("/home/ricool/dev/img/MEME.png", pixels, width, height);
     if(error) std::cout << "encoder error " << error << ": "<< lodepng_error_text(error) << std::endl;

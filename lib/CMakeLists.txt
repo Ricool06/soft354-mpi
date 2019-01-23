@@ -1,1 +1,1 @@
-add_library(${LIBRARY} Matrix2D.cpp Matrix2D.h Canny.cpp Canny.h)
+add_library(${LIBRARY} Matrix2D.cpp Matrix2D.h Padding.cpp Padding.h Gauss.cpp Gauss.h)

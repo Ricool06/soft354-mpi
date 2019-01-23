@@ -2,10 +2,13 @@
 #include <stdlib.h>
 #include <cmath>
 #include <vector>
-#include <omp.h>
-#include "Canny.h"
+#include <mpi.h>
+#include "Gauss.h"
 
-namespace Canny {
+namespace Gauss {
+    void populateGaussianKernel(Matrix2D<float> gaussianKernel) {
+    }
+
     std::vector<unsigned char> generateGreyscaleImage(const std::vector<unsigned char> &originalImage, unsigned int pixelWidth, unsigned int pixelHeight) {
         return {0};
     }

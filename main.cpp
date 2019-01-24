@@ -14,9 +14,16 @@ const int PADDINGS_TAG = 2;
 
 const int WIDTH_TAG = 3;
 
+int worldSize, worldRank;
+unsigned originalFullWidth, originalFullHeight;
+
 void generateGaussianKernel(Matrix2D<float> matrix2D, float d);
 
 std::vector<unsigned char> convert1DPixelArrayToImage(unsigned int *pixelArray, int imageSize);
+
+void reconstructImage();
+
+void appendArray(unsigned int *fullArray, size_t offset, unsigned int *partialArray, size_t partialArrayLength);
 
 /**
  * Calculates the number of rows and columns to padded or shared on each side of a scattered image fragment,
@@ -232,11 +239,9 @@ cropTransparentPixels(unsigned **croppedImage, unsigned **originalImage, Padding
     return newWidthAndHeight;
 }
 
-
 int main(int argc, char **argv) {
     MPI_Init(&argc, &argv);
 
-    int worldSize, worldRank;
     MPI_Comm_size(MPI_COMM_WORLD, &worldSize);
     MPI_Comm_rank(MPI_COMM_WORLD, &worldRank);
 
@@ -245,10 +250,9 @@ int main(int argc, char **argv) {
 
     // Load and
     if (worldRank == ROOT_RANK) {
-        unsigned originalWidth, originalHeight;
         std::vector<unsigned char> flowers;
 
-        unsigned error = lodepng::decode(flowers, originalWidth, originalHeight, "img/tiger.png");
+        unsigned error = lodepng::decode(flowers, originalFullWidth, originalFullHeight, "img/tiger.png");
         if (error) {
             std::cout << "decoder error " << error << ": " << lodepng_error_text(error) << std::endl;
             return 1;
@@ -265,8 +269,8 @@ int main(int argc, char **argv) {
          * ++++
          * ++++
          */
-        unsigned **pixelArray2D = allocateContiguous2DPixelArray(originalHeight, originalWidth);
-        convertImageTo2DPixelArray(pixelArray2D, flowers, originalWidth, originalHeight);
+        unsigned **pixelArray2D = allocateContiguous2DPixelArray(originalFullHeight, originalFullWidth);
+        convertImageTo2DPixelArray(pixelArray2D, flowers, originalFullWidth, originalFullHeight);
 
         /**
          * Allocate memory for padded image
@@ -277,11 +281,11 @@ int main(int argc, char **argv) {
          * -++++-
          * ------
          */
-        const int newRowCount = originalHeight + padding.top + padding.bottom;
-        const int newColumnCount = originalWidth + padding.left + padding.right;
+        const int newRowCount = originalFullHeight + padding.top + padding.bottom;
+        const int newColumnCount = originalFullWidth + padding.left + padding.right;
         unsigned **paddedImage = allocateContiguous2DPixelArray(newRowCount, newColumnCount);
 
-        const std::vector<int> newWidthAndHeight = padImageWithTransparentPixels(paddedImage, pixelArray2D, padding, originalWidth, originalHeight);
+        const std::vector<int> newWidthAndHeight = padImageWithTransparentPixels(paddedImage, pixelArray2D, padding, originalFullWidth, originalFullHeight);
         int newWidth = newWidthAndHeight[0];
         int newHeight = newWidthAndHeight[1];
 
@@ -291,9 +295,9 @@ int main(int argc, char **argv) {
 
         // Distributing data
         int fullPaddedSize[1] = {newWidth * newHeight};
-        int originalSize = originalHeight * originalWidth;
-        const int minimumFragmentCoreHeight = originalHeight / worldSize;
-        const int fragmentHeightRemainder = originalHeight % worldSize;
+        int originalSize = originalFullHeight * originalFullWidth;
+        const int minimumFragmentCoreHeight = originalFullHeight / worldSize;
+        const int fragmentHeightRemainder = originalFullHeight % worldSize;
 
         int coreStartRowIndex = padding.top * newWidth;
 
@@ -405,14 +409,50 @@ int main(int argc, char **argv) {
     auto *pixelArray1D = (unsigned *) malloc(originalHeight * originalWidth * bytesInPixel);
     convert2DPixelArrayTo1D(pixelArray1D, croppedImage, originalWidth, originalHeight);
 
-    std::vector<unsigned char> writableCroppedFragment = convert1DPixelArrayToImage(pixelArray1D, originalWidth * originalHeight);
+    MPI_Request fragmentRequest;
+    MPI_Isend(pixelArray1D, originalHeight * originalWidth, MPI_UNSIGNED, ROOT_RANK, FRAGMENT_TAG, MPI_COMM_WORLD, &fragmentRequest);
+    MPI_Request_free(&fragmentRequest);
 
-    // TODO: delete after
-    unsigned error = lodepng::encode("img/tile" + std::to_string(worldRank) + ".png", writableCroppedFragment, (unsigned) originalWidth, (unsigned) originalHeight);
-    if (error) std::cout << "encoder error " << error << ": " << lodepng_error_text(error) << std::endl;
-
+    if (worldRank == ROOT_RANK) {
+        reconstructImage();
+    }
     MPI_Finalize();
     return 0;
+}
+
+void reconstructImage() {
+    size_t fullArrayLength = (size_t) originalFullHeight * originalFullWidth;
+    auto *fullPixelArray = (unsigned *) calloc(fullArrayLength, sizeof(unsigned));
+
+    size_t copyOffset = 0;
+
+    for (int targetRank = 0; targetRank < worldSize; ++targetRank) {
+        // Receive my fragment
+        int fragmentSize;
+        MPI_Status fragmentStatus;
+        MPI_Probe(targetRank, FRAGMENT_TAG, MPI_COMM_WORLD, &fragmentStatus);
+        MPI_Get_count(&fragmentStatus, MPI_UNSIGNED, &fragmentSize);
+
+        auto *pixelArray = (unsigned *) calloc((size_t) (fragmentSize), sizeof(unsigned));
+
+        MPI_Recv(pixelArray, fragmentSize, MPI_UNSIGNED, targetRank, FRAGMENT_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+        appendArray(fullPixelArray, copyOffset, pixelArray, (size_t) fragmentSize);
+        copyOffset += fragmentSize;
+    }
+
+    std::vector<unsigned char> writableBlurredImage = convert1DPixelArrayToImage(fullPixelArray,
+                                                                                 originalFullWidth *
+                                                                                 originalFullHeight);
+
+    // TODO: delete after
+    unsigned error = lodepng::encode("img/tile" + std::to_string(worldRank) + ".png", writableBlurredImage, originalFullWidth, originalFullHeight);
+    if (error) std::cout << "encoder error " << error << ": " << lodepng_error_text(error) << std::endl;
+}
+
+void appendArray(unsigned int *fullArray, size_t offset, unsigned int *partialArray, size_t partialArrayLength) {
+    printf("%d ", offset);
+    memcpy(fullArray + offset, partialArray, partialArrayLength * bytesInPixel);
 }
 
 std::vector<unsigned char> convert1DPixelArrayToImage(unsigned int *pixelArray, int imageSize) {

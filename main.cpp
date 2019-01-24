@@ -2,6 +2,7 @@
 #include <iostream>
 #include <mpi.h>
 #include <lodepng.h>
+#include <time.h>
 #include <Gauss.h>
 
 const unsigned BYTES_IN_PIXEL = static_cast<unsigned>(sizeof(unsigned));
@@ -9,6 +10,8 @@ const int ROOT_RANK = 0;
 const int FRAGMENT_TAG = 0;
 const int PADDINGS_TAG = 1;
 const int WIDTH_TAG = 2;
+clock_t startTime;
+clock_t endTime;
 
 int worldSize, worldRank;
 unsigned originalFullWidth, originalFullHeight;
@@ -54,8 +57,11 @@ int main(int argc, char **argv) {
     if (worldRank == ROOT_RANK) {
         std::vector<unsigned char> flowers;
 
-        unsigned error = lodepng::decode(flowers, originalFullWidth, originalFullHeight, "img/tiger.png");
+        unsigned error = lodepng::decode(flowers, originalFullWidth, originalFullHeight, "img/mountains25.png");
         if (error) std::cout << "decoder error " << error << ": " << lodepng_error_text(error) << std::endl;
+
+        // Start clock
+        startTime = clock();
 
         generateGaussianKernel(gaussianKernel, 1.0f);
 
@@ -284,9 +290,15 @@ void reconstructImage() {
                                                                                  originalFullWidth *
                                                                                  originalFullHeight);
 
-    unsigned error = lodepng::encode("img/gb_tiger.png", writableBlurredImage,
+    // Get end time
+    endTime = clock();
+
+    unsigned error = lodepng::encode("img/gb_mountains25.png", writableBlurredImage,
                                      originalFullWidth, originalFullHeight);
     if (error) std::cout << "encoder error " << error << ": " << lodepng_error_text(error) << std::endl;
+
+    float millisecondsTaken = ((endTime - startTime) * 1000.0f) / CLOCKS_PER_SEC;
+    printf("Process without disk I/O took: %fms\n", millisecondsTaken);
 }
 
 void appendArray(unsigned int *fullArray, size_t offset, unsigned int *partialArray, size_t partialArrayLength) {

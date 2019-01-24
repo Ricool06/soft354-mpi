@@ -229,13 +229,13 @@ int main(int argc, char **argv) {
         unsigned originalWidth, originalHeight;
         std::vector<unsigned char> flowers;
 
-        unsigned error = lodepng::decode(flowers, originalWidth, originalHeight, "img/hmm.png");
+        unsigned error = lodepng::decode(flowers, originalWidth, originalHeight, "img/tiger.png");
         if (error) {
             std::cout << "decoder error " << error << ": " << lodepng_error_text(error) << std::endl;
             return 1;
         }
 
-        generateGaussianKernel(gaussianKernel, 0.89f);
+        generateGaussianKernel(gaussianKernel, 4.0f);
 
         Padding padding = getPaddingForImageFragments(gaussianKernel);
 
@@ -272,7 +272,6 @@ int main(int argc, char **argv) {
 
         // Distributing data
         int fullPaddedSize[1] = {newWidth * newHeight};
-        printf("%d \n", fullPaddedSize[0]);
         int originalSize = originalHeight * originalWidth;
         const int minimumFragmentCoreHeight = originalHeight / worldSize;
         const int fragmentHeightRemainder = originalHeight % worldSize;
@@ -338,16 +337,47 @@ int main(int argc, char **argv) {
     auto *pixelArray = (unsigned *) calloc((size_t) (fragmentSize), sizeof(unsigned));
 
     MPI_Recv(pixelArray, fragmentSize, MPI_UNSIGNED, ROOT_RANK, FRAGMENT_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-//
-//    for (int i = 0; i < height; ++i) {
-//        printf("{ ");
-//        for (int j = 0; j < width; ++j) {
-//            printf("%d ", pixelArray[(width * j) + i]);
-//        }
-//        printf(" }\n");
-//    }
 
     std::vector<unsigned char> writableFragment = convert1DPixelArrayToImage(pixelArray, fragmentSize);
+
+    Padding padding(paddings[0], paddings[1], paddings[2], paddings[3]);
+
+    for (int row = padding.top; row < height - padding.bottom; ++row) {
+        for (int column = padding.left; column < width - padding.right; ++column) {
+
+            size_t index = (row * bytesInPixel * width) + (column * bytesInPixel);
+            float newRed = 0.0f;
+            float newGreen = 0.0f;
+            float newBlue = 0.0f;
+            float newAlpha = 0.0f;
+
+            for (int kernelIndex = 0; kernelIndex < gaussianKernel.width * gaussianKernel.height; ++kernelIndex) {
+                int kernelX = kernelIndex % gaussianKernel.width;
+                int kernelY = kernelIndex / gaussianKernel.width;
+
+                int offsetX = kernelX - (gaussianKernel.width / 2);
+                int offsetY = kernelY - (gaussianKernel.height / 2);
+
+                int blendPixelX = column + offsetX;
+                int blendPixelY = row + offsetY;
+
+                int blendPixelIndex = (blendPixelY * width) + blendPixelX;
+
+                int startOfBlendPixel = blendPixelIndex * bytesInPixel;
+                newRed += writableFragment[startOfBlendPixel] * gaussianKernel.elements[kernelIndex];
+                newGreen += writableFragment[startOfBlendPixel + 1] * gaussianKernel.elements[kernelIndex];
+                newBlue += writableFragment[startOfBlendPixel + 2] * gaussianKernel.elements[kernelIndex];
+                newAlpha += writableFragment[startOfBlendPixel + 3] * gaussianKernel.elements[kernelIndex];
+            }
+//            printf("newred: %f\n", newRed);
+            writableFragment[index] = static_cast<unsigned char>(newRed);
+            writableFragment[index + 1] = static_cast<unsigned char>(newGreen);
+            writableFragment[index + 2] = static_cast<unsigned char>(newBlue);
+            writableFragment[index + 3] = static_cast<unsigned char>(newAlpha);
+
+        }
+    }
+
     // TODO: delete after
     unsigned error = lodepng::encode("img/tile" + std::to_string(worldRank) + ".png", writableFragment, (unsigned) width, (unsigned) height);
     if (error) std::cout << "encoder error " << error << ": " << lodepng_error_text(error) << std::endl;

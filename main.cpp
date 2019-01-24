@@ -4,13 +4,11 @@
 #include <lodepng.h>
 #include <Gauss.h>
 
-const unsigned bytesInPixel = static_cast<unsigned>(sizeof(unsigned));
+const unsigned BYTES_IN_PIXEL = static_cast<unsigned>(sizeof(unsigned));
 const int ROOT_RANK = 0;
 const int FRAGMENT_TAG = 0;
-const int FRAGMENT_SIZE_TAG = 1;
-const int PADDINGS_TAG = 2;
-
-const int WIDTH_TAG = 3;
+const int PADDINGS_TAG = 1;
+const int WIDTH_TAG = 2;
 
 int worldSize, worldRank;
 unsigned originalFullWidth, originalFullHeight;
@@ -94,7 +92,7 @@ int main(int argc, char **argv) {
 
         // Convert image from 2D array (good for padding) to 1D array (good for partitioning & distribution)
         const int imageSize = newWidth * newHeight;
-        auto *paddedImage1D = static_cast<unsigned *>(calloc((size_t) imageSize, bytesInPixel));
+        auto *paddedImage1D = static_cast<unsigned *>(calloc((size_t) imageSize, BYTES_IN_PIXEL));
         convert2DPixelArrayTo1D(paddedImage1D, paddedImage, newWidth, newHeight);
 
         // Set up initial values needed for distribution
@@ -188,7 +186,7 @@ int main(int argc, char **argv) {
     int height = fragmentSize / width;
 
     // Allocate memory and receive my fragment from root process
-    auto *pixelArray = static_cast<unsigned *>(calloc((size_t) (fragmentSize), bytesInPixel));
+    auto *pixelArray = static_cast<unsigned *>(calloc((size_t) (fragmentSize), BYTES_IN_PIXEL));
     MPI_Recv(pixelArray, fragmentSize, MPI_UNSIGNED, ROOT_RANK, FRAGMENT_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
     std::vector<unsigned char> fragmentToBlur = convert1DPixelArrayToImage(pixelArray, fragmentSize);
@@ -198,7 +196,7 @@ int main(int argc, char **argv) {
     // Loop within the bounds of the padding so we only blur original pixels, and use the padding to blur
     for (int row = padding.top; row < height - padding.bottom; ++row) {
         for (int column = padding.left; column < width - padding.right; ++column) {
-            size_t pixelIndex = (row * bytesInPixel * width) + (column * bytesInPixel);
+            size_t pixelIndex = (row * BYTES_IN_PIXEL * width) + (column * BYTES_IN_PIXEL);
             float newRed = 0.0f;
             float newGreen = 0.0f;
             float newBlue = 0.0f;
@@ -217,7 +215,7 @@ int main(int argc, char **argv) {
 
                 int blendPixelIndex = (blendPixelY * width) + blendPixelX;
 
-                int startOfBlendPixel = blendPixelIndex * bytesInPixel;
+                int startOfBlendPixel = blendPixelIndex * BYTES_IN_PIXEL;
                 newRed += fragmentToBlur[startOfBlendPixel] * gaussianKernel.elements[kernelIndex];
                 newGreen += fragmentToBlur[startOfBlendPixel + 1] * gaussianKernel.elements[kernelIndex];
                 newBlue += fragmentToBlur[startOfBlendPixel + 2] * gaussianKernel.elements[kernelIndex];
@@ -240,7 +238,7 @@ int main(int argc, char **argv) {
     convertImageTo2DPixelArray(pixelArray2D, fragmentToBlur, (unsigned) width, (unsigned) height);
     cropTransparentPixels(croppedImage, pixelArray2D, padding, (unsigned) width, (unsigned) height);
 
-    auto *pixelArray1D = static_cast<unsigned *>(malloc(originalHeight * originalWidth * bytesInPixel));
+    auto *pixelArray1D = static_cast<unsigned *>(malloc(originalHeight * originalWidth * BYTES_IN_PIXEL));
     convert2DPixelArrayTo1D(pixelArray1D, croppedImage, originalWidth, originalHeight);
 
     MPI_Request fragmentRequest;
@@ -292,7 +290,7 @@ void reconstructImage() {
 }
 
 void appendArray(unsigned int *fullArray, size_t offset, unsigned int *partialArray, size_t partialArrayLength) {
-    memcpy(fullArray + offset, partialArray, partialArrayLength * bytesInPixel);
+    memcpy(fullArray + offset, partialArray, partialArrayLength * BYTES_IN_PIXEL);
 }
 
 /**
@@ -302,12 +300,12 @@ void appendArray(unsigned int *fullArray, size_t offset, unsigned int *partialAr
  * @return A vector of bytes that can be used by lodepng
  */
 std::vector<unsigned char> convert1DPixelArrayToImage(unsigned int *pixelArray, int imageSize) {
-    const int imageSizeInBytes = imageSize * bytesInPixel;
+    const int imageSizeInBytes = imageSize * BYTES_IN_PIXEL;
     auto *buffer = static_cast<unsigned char *>(malloc((size_t) imageSizeInBytes));
 
     memcpy(buffer, pixelArray, (size_t) imageSizeInBytes);
 
-    std::vector<unsigned char> image(buffer, buffer + (imageSize * bytesInPixel));
+    std::vector<unsigned char> image(buffer, buffer + (imageSize * BYTES_IN_PIXEL));
 
     return image;
 }
@@ -404,7 +402,7 @@ convertImageTo2DPixelArray(unsigned **pixelArray2D, const std::vector<unsigned c
 
     // Convert originalImage from byte array to pixel array
     // Each element now represents a whole 32bit pixel rather than R, G, B, or A separately
-    auto *buffer = static_cast<unsigned *>(calloc(imageSize, bytesInPixel));
+    auto *buffer = static_cast<unsigned *>(calloc(imageSize, BYTES_IN_PIXEL));
     memcpy(buffer, originalImage.data(), imageSize * sizeof(int));
     std::vector<unsigned> originalImage32Bit(buffer, buffer + imageSize);
 
@@ -418,7 +416,7 @@ convertImageTo2DPixelArray(unsigned **pixelArray2D, const std::vector<unsigned c
 void
 convert2DPixelArrayTo1D(unsigned *pixelArray, unsigned **pixelArray2D, const int imageWidth, const int imageHeight) {
     for (int i = 0; i < imageHeight; ++i) {
-        memcpy(pixelArray + (i * imageWidth), pixelArray2D[i], bytesInPixel * imageWidth);
+        memcpy(pixelArray + (i * imageWidth), pixelArray2D[i], BYTES_IN_PIXEL * imageWidth);
     }
 }
 
@@ -454,7 +452,7 @@ padImageWithTransparentPixels(unsigned **paddedImage, unsigned **originalImage, 
         const size_t coreRow = padding.top + originalRow;
         unsigned *rowPointer = &(paddedImage[coreRow][padding.left]);
         unsigned *oldRowPointer = &(originalImage[originalRow][0]);
-        memcpy(rowPointer, oldRowPointer, imageWidth * bytesInPixel);
+        memcpy(rowPointer, oldRowPointer, imageWidth * BYTES_IN_PIXEL);
     }
 
     const std::vector<int> newWidthAndHeight = {newImageWidth, newImageHeight};
@@ -495,7 +493,7 @@ cropTransparentPixels(unsigned **croppedImage, unsigned **originalImage, Padding
         const size_t coreRow = padding.top + croppedRow;
         unsigned *rowPointer = &(croppedImage[croppedRow][0]);
         unsigned *oldRowPointer = &(originalImage[coreRow][padding.left]);
-        memcpy(rowPointer, oldRowPointer, newImageWidth * bytesInPixel);
+        memcpy(rowPointer, oldRowPointer, newImageWidth * BYTES_IN_PIXEL);
     }
 
     const std::vector<int> newWidthAndHeight = {newImageWidth, newImageHeight};

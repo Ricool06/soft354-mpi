@@ -4,12 +4,12 @@
 #include <cstddef>
 
 struct Padding {
-    unsigned top;
-    unsigned right;
-    unsigned bottom;
-    unsigned left;
+    int top;
+    int right;
+    int bottom;
+    int left;
 
-    Padding(unsigned top, unsigned right, unsigned bottom, unsigned left) : top(top), right(right), bottom(bottom),
+    Padding(int top, int right, int bottom, int left) : top(top), right(right), bottom(bottom),
                                                                             left(left) {}
 };
 

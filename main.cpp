@@ -7,8 +7,16 @@
 #include <cmath>
 
 const unsigned bytesInPixel = static_cast<unsigned>(sizeof(unsigned));
+const int ROOT_RANK = 0;
+const int FRAGMENT_TAG = 0;
+const int FRAGMENT_SIZE_TAG = 1;
+const int PADDINGS_TAG = 2;
+
+const int WIDTH_TAG = 3;
 
 void generateGaussianKernel(Matrix2D<float> matrix2D, float d);
+
+std::vector<unsigned char> convert1DPixelArrayToImage(unsigned int *pixelArray, int imageSize);
 
 /**
  * Calculates the number of rows and columns to padded or shared on each side of a scattered image fragment,
@@ -68,49 +76,49 @@ Padding getPaddingForImageFragments(Matrix2D<float> gaussianKernel) {
 //        size_t pixelsToFinishLastRow = fragmentEndIndex % imageWidth;
 //    }
 //}
+//
+//std::vector<std::vector<unsigned>> partitionImageIntoFragments(const std::vector<unsigned char> &originalImage,
+//                                                               const int fragmentCount,
+//                                                               const unsigned imageWidth,
+//                                                               const unsigned imageHeight) {
+//    const size_t imageSize = imageWidth * imageHeight;
+//    const size_t minimumFragmentSize = imageSize / fragmentCount;
+//    const size_t remainder = imageSize % fragmentCount;
+//
+//    // Convert originalImage from byte array to pixel array
+//    // Each element now represents a whole 32bit pixel rather than R, G, B, or A separately
+//    unsigned buffer[imageSize];
+//    memcpy(buffer, originalImage.data(), imageSize * bytesInPixel);
+//    std::vector<unsigned> originalImage32Bit(buffer, buffer + imageSize);
+//
+//    std::vector<std::vector<unsigned>> fragments;
+//    size_t pixelIndex = 0;
+//
+//    for (int i = 0; i < fragmentCount; ++i) {
+//        // Make fragment size as even as possible
+//        // e.g. 5x5 image, 7 nodes, 25 / 7 = 3r4: fragment sizes = {4, 4, 4, 4, 3, 3, 3}
+//        const size_t fragmentSize = minimumFragmentSize + (i < remainder ? 1 : 0);
+//
+//        // Cut out the fragment, with complete first and last rows
+//        size_t startPixelIndexToStore = pixelIndex;
+//        size_t indexAfterLastPixelToStore = pixelIndex + fragmentSize;
+//
+//        size_t startColumn = startPixelIndexToStore % imageWidth;
+//        size_t endColumn = (indexAfterLastPixelToStore % imageWidth);
+//        auto firstPixelOfFirstRow = originalImage32Bit.begin() + startPixelIndexToStore - startColumn;
+//        auto lastPixelOfLastRow = originalImage32Bit.begin() + indexAfterLastPixelToStore + imageWidth - endColumn - 1;
+//        std::vector<unsigned> fragment(firstPixelOfFirstRow, lastPixelOfLastRow);
+//
+//        // Increase starting pixel index and push the fragment onto the array
+//        pixelIndex += fragmentSize;
+//        fragments.push_back(fragment);
+//    }
+//
+//    return fragments;
+//}
 
-std::vector<std::vector<unsigned>> partitionImageIntoFragments(const std::vector<unsigned char> &originalImage,
-                                                               const int fragmentCount,
-                                                               const unsigned imageWidth,
-                                                               const unsigned imageHeight) {
-    const size_t imageSize = imageWidth * imageHeight;
-    const size_t minimumFragmentSize = imageSize / fragmentCount;
-    const size_t remainder = imageSize % fragmentCount;
-
-    // Convert originalImage from byte array to pixel array
-    // Each element now represents a whole 32bit pixel rather than R, G, B, or A separately
-    unsigned buffer[imageSize];
-    memcpy(buffer, originalImage.data(), imageSize * bytesInPixel);
-    std::vector<unsigned> originalImage32Bit(buffer, buffer + imageSize);
-
-    std::vector<std::vector<unsigned>> fragments;
-    size_t pixelIndex = 0;
-
-    for (int i = 0; i < fragmentCount; ++i) {
-        // Make fragment size as even as possible
-        // e.g. 5x5 image, 7 nodes, 25 / 7 = 3r4: fragment sizes = {4, 4, 4, 4, 3, 3, 3}
-        const size_t fragmentSize = minimumFragmentSize + (i < remainder ? 1 : 0);
-
-        // Cut out the fragment, with complete first and last rows
-        size_t startPixelIndexToStore = pixelIndex;
-        size_t indexAfterLastPixelToStore = pixelIndex + fragmentSize;
-
-        size_t startColumn = startPixelIndexToStore % imageWidth;
-        size_t endColumn = (indexAfterLastPixelToStore % imageWidth);
-        auto firstPixelOfFirstRow = originalImage32Bit.begin() + startPixelIndexToStore - startColumn;
-        auto lastPixelOfLastRow = originalImage32Bit.begin() + indexAfterLastPixelToStore + imageWidth - endColumn - 1;
-        std::vector<unsigned> fragment(firstPixelOfFirstRow, lastPixelOfLastRow);
-
-        // Increase starting pixel index and push the fragment onto the array
-        pixelIndex += fragmentSize;
-        fragments.push_back(fragment);
-    }
-
-    return fragments;
-}
-
-unsigned **allocateContiguous2DPixelArray(size_t rows, size_t columns) {
-    auto *pixels = static_cast<unsigned *>(calloc(rows * columns, sizeof(unsigned)));
+unsigned** allocateContiguous2DPixelArray(int rows, int columns) {
+    auto *pixels = static_cast<unsigned *>(calloc((size_t) rows * columns, sizeof(unsigned)));
     auto **pixelArray2D = static_cast<unsigned **>(malloc(rows * sizeof(unsigned *)));
 
     for (size_t i = 0; i < rows; ++i) {
@@ -140,10 +148,10 @@ convertImageTo2DPixelArray(unsigned **pixelArray2D, const std::vector<unsigned c
 }
 
 std::vector<unsigned char>
-convert2DPixelArrayToImage(unsigned **pixelArray2D, const unsigned imageWidth, const unsigned imageHeight) {
-    const size_t imageSize = imageWidth * imageHeight;
-    const size_t imageSizeInBytes = imageSize * bytesInPixel;
-    auto *buffer = static_cast<unsigned char *>(malloc(imageSizeInBytes));
+convert2DPixelArrayToImage(unsigned **pixelArray2D, const int imageWidth, const int imageHeight) {
+    const int imageSize = imageWidth * imageHeight;
+    const int imageSizeInBytes = imageSize * bytesInPixel;
+    auto *buffer = static_cast<unsigned char *>(malloc((size_t) imageSizeInBytes));
 
     for (int i = 0; i < imageHeight; ++i) {
         memcpy(buffer + (bytesInPixel * i * imageWidth), pixelArray2D[i], bytesInPixel * imageWidth);
@@ -152,6 +160,21 @@ convert2DPixelArrayToImage(unsigned **pixelArray2D, const unsigned imageWidth, c
     std::vector<unsigned char> image(buffer, buffer + (imageSize * bytesInPixel));
 
     return image;
+}
+
+void
+convert2DPixelArrayTo1D(unsigned *pixelArray, unsigned **pixelArray2D, const int imageWidth, const int imageHeight) {
+    const int imageSize = imageWidth * imageHeight;
+//    const int imageSizeInBytes = imageSize * bytesInPixel;
+//    auto *buffer = static_cast<unsigned*>(malloc((size_t) imageSizeInBytes));
+
+    for (int i = 0; i < imageHeight; ++i) {
+        memcpy(pixelArray + (i * imageWidth), pixelArray2D[i], bytesInPixel * imageWidth);
+    }
+//
+//    std::vector<unsigned> image(buffer, buffer + (imageSize));
+//
+//    return image;
 }
 
 /**
@@ -173,20 +196,21 @@ convert2DPixelArrayToImage(unsigned **pixelArray2D, const unsigned imageWidth, c
  * @param imageWidth
  * @param imageHeight
  */
-std::vector<unsigned>
+std::vector<int>
 padImageWithTransparentPixels(unsigned **paddedImage, unsigned **originalImage, Padding padding, unsigned imageWidth,
                               unsigned imageHeight) {
-    const unsigned newImageHeight = imageHeight + padding.top + padding.bottom;
-    const unsigned newImageWidth = imageWidth + padding.left + padding.right;
+    const int newImageHeight = imageHeight + padding.top + padding.bottom;
+    const int newImageWidth = imageWidth + padding.left + padding.right;
 
     for (size_t originalRow = 0; originalRow < imageHeight; ++originalRow) {
         const size_t coreRow = padding.top + originalRow;
         unsigned *rowPointer = &(paddedImage[coreRow][padding.left]);
         unsigned *oldRowPointer = &(originalImage[originalRow][0]);
-        memcpy(rowPointer, oldRowPointer, sizeof(originalImage[0]) * bytesInPixel);
+        memcpy(rowPointer, oldRowPointer, imageWidth * bytesInPixel);
     }
 
-    const std::vector<unsigned> newWidthAndHeight = {newImageWidth, newImageHeight};
+    const std::vector<int> newWidthAndHeight = {newImageWidth, newImageHeight};
+
     return newWidthAndHeight;
 }
 
@@ -198,13 +222,14 @@ int main(int argc, char **argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &worldRank);
 
     Matrix2D<float> gaussianKernel(nullptr, 5, 5);
+    gaussianKernel.elements = static_cast<float *>(malloc(gaussianKernel.width * gaussianKernel.height * sizeof(float)));
 
     // Load and
-    if (worldRank == 0) {
-        unsigned flowersWidth, flowersHeight;
+    if (worldRank == ROOT_RANK) {
+        unsigned originalWidth, originalHeight;
         std::vector<unsigned char> flowers;
 
-        unsigned error = lodepng::decode(flowers, flowersWidth, flowersHeight, "img/tiny.png");
+        unsigned error = lodepng::decode(flowers, originalWidth, originalHeight, "img/hmm.png");
         if (error) {
             std::cout << "decoder error " << error << ": " << lodepng_error_text(error) << std::endl;
             return 1;
@@ -221,8 +246,8 @@ int main(int argc, char **argv) {
          * ++++
          * ++++
          */
-        unsigned **pixelArray2D = allocateContiguous2DPixelArray(flowersHeight, flowersWidth);
-        convertImageTo2DPixelArray(pixelArray2D, flowers, flowersWidth, flowersHeight);
+        unsigned **pixelArray2D = allocateContiguous2DPixelArray(originalHeight, originalWidth);
+        convertImageTo2DPixelArray(pixelArray2D, flowers, originalWidth, originalHeight);
 
         /**
          * Allocate memory for padded image
@@ -233,72 +258,118 @@ int main(int argc, char **argv) {
          * -++++-
          * ------
          */
-        const size_t newRowCount = flowersHeight + padding.top + padding.bottom;
-        const size_t newColumnCount = flowersWidth + padding.left + padding.right;
+        const int newRowCount = originalHeight + padding.top + padding.bottom;
+        const int newColumnCount = originalWidth + padding.left + padding.right;
         unsigned **paddedImage = allocateContiguous2DPixelArray(newRowCount, newColumnCount);
 
-        const std::vector<unsigned> newWidthAndHeight = padImageWithTransparentPixels(paddedImage, pixelArray2D, padding, flowersWidth, flowersHeight);
-        unsigned newWidth = newWidthAndHeight[0];
-        unsigned newHeight = newWidthAndHeight[1];
+        const std::vector<int> newWidthAndHeight = padImageWithTransparentPixels(paddedImage, pixelArray2D, padding, originalWidth, originalHeight);
+        int newWidth = newWidthAndHeight[0];
+        int newHeight = newWidthAndHeight[1];
 
+        const int imageSize = newWidth * newHeight;
+        auto *paddedImage1D = (unsigned*) calloc(imageSize, bytesInPixel);
+        convert2DPixelArrayTo1D(paddedImage1D, paddedImage, newWidth, newHeight);
 
+        // Distributing data
+        int fullPaddedSize[1] = {newWidth * newHeight};
+        printf("%d \n", fullPaddedSize[0]);
+        int originalSize = originalHeight * originalWidth;
+        const int minimumFragmentCoreHeight = originalHeight / worldSize;
+        const int fragmentHeightRemainder = originalHeight % worldSize;
 
-//        // TODO: delete after
-        std::vector<unsigned char> newImageMate = convert2DPixelArrayToImage(paddedImage, newWidth, newHeight);
-        error = lodepng::encode("img/pad2.png", newImageMate, newWidth, newHeight);
-        if (error) std::cout << "encoder error " << error << ": " << lodepng_error_text(error) << std::endl;
-
-        // Tiling and distributing data
-        int fullPaddedSize[2] = {(int) newWidth, (int) newHeight};
-        const int minimumTileWidth = flowersWidth / worldSize;
-        const int minimumTileHeight = flowersHeight / worldSize;
-        const int widthRemainder = flowersWidth % worldSize;
-        const int heightRemainder = flowersHeight % worldSize;
-
-        int firstColumn = 0;
-        int firstRow = 0;
+        int coreStartRowIndex = padding.top * newWidth;
 
         for (int targetRank = 0; targetRank < worldSize; ++targetRank) {
-            int tileWidth = minimumTileWidth + (targetRank < widthRemainder ? 1 : 0);
-            int tileHeight = minimumTileHeight + (targetRank < heightRemainder ? 1 : 0);
-            tileWidth += padding.left + padding.right;
-            tileHeight += padding.top + padding.bottom;
+            int coreFragmentHeight = minimumFragmentCoreHeight + (targetRank < fragmentHeightRemainder ? 1 : 0);
+            int fragmentLength = (coreFragmentHeight + padding.top + padding.bottom) * newWidth;
 
-            int topLeftCorner[2] = {firstRow, firstColumn};
-            int tileSize[2] = {tileWidth, tileHeight};
+            int paddingArray[4] = {padding.top, padding.right, padding.bottom, padding.left};
 
-            // Create a 2D subarray (tile) of pixels to send
-            MPI_Datatype tile;
-            MPI_Type_create_subarray(2, fullPaddedSize, tileSize, topLeftCorner, MPI_ORDER_C, MPI::UNSIGNED, &tile);
-            MPI_Type_commit(&tile);
+            // Send padding
+            MPI_Request paddingRequest;
+            MPI_Isend(paddingArray, 4, MPI_INT, targetRank, PADDINGS_TAG, MPI_COMM_WORLD, &paddingRequest);
+            MPI_Request_free(&paddingRequest);
 
-            // Send tile, but don't check for request completion
-            MPI_Request request;
-            MPI_Isend(&(pixelArray2D[0][0]), 1, tile, targetRank, 0, MPI_COMM_WORLD, &request);
-            MPI_Request_free(&request);
+            // Send fragment size, but don't check for request completion
+            MPI_Request widthRequest;
+            MPI_Isend(&newWidth, 1, MPI_INT, targetRank, WIDTH_TAG, MPI_COMM_WORLD, &widthRequest);
+            MPI_Request_free(&widthRequest);
+
+            int startIndex = coreStartRowIndex - (padding.top * newWidth);
+            int fragmentLengths[1] = {fragmentLength};
+            int startIndexes[1] = {startIndex};
+
+            // Create a subarray (fragment) of pixels to send
+            MPI_Datatype fragment;
+            MPI_Type_create_subarray(1, fullPaddedSize, fragmentLengths, startIndexes, MPI_ORDER_C, MPI_UNSIGNED, &fragment);
+            MPI_Type_commit(&fragment);
+
+            // Send fragment, but don't check for request completion
+            MPI_Request fragmentRequest;
+            MPI_Isend(paddedImage1D, 1, fragment, targetRank, FRAGMENT_TAG, MPI_COMM_WORLD, &fragmentRequest);
+            MPI_Request_free(&fragmentRequest);
+            MPI_Type_free(&fragment);
+
+            coreStartRowIndex += coreFragmentHeight * newWidth;
         }
     }
-    
-    // Compute!
-    int sender = 0;
 
-    int count;
-    MPI_Status status;
-    MPI_Probe(sender, 0, MPI_COMM_WORLD, &status);
-    MPI_Get_count(&status, MPI::UNSIGNED, &count);
+    // Share Gaussian kernel
+    MPI_Bcast(gaussianKernel.elements, gaussianKernel.width * gaussianKernel.height, MPI_FLOAT, ROOT_RANK, MPI_COMM_WORLD);
 
-    unsigned **pixelArray2D = allocateContiguous2DPixelArray(16, 16);
+    // Receive padding
+    int paddings[4];
+    MPI_Status paddingsStatus;
+    MPI_Recv(&paddings, 4, MPI_INT, ROOT_RANK, PADDINGS_TAG, MPI_COMM_WORLD, &paddingsStatus);
 
-    MPI_Recv(&(pixelArray2D[0][0]), count, MPI::UNSIGNED, sender, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    // Receive width
+    int width;
+    MPI_Status widthStatus;
+    MPI_Recv(&width, 1, MPI_INT, ROOT_RANK, WIDTH_TAG, MPI_COMM_WORLD, &widthStatus);
+
+    // Receive my fragment
+    int fragmentSize;
+    MPI_Status fragmentStatus;
+    MPI_Probe(ROOT_RANK, FRAGMENT_TAG, MPI_COMM_WORLD, &fragmentStatus);
+    MPI_Get_count(&fragmentStatus, MPI_UNSIGNED, &fragmentSize);
+
+    int height = fragmentSize / width;
+
+    auto *pixelArray = (unsigned *) calloc((size_t) (fragmentSize), sizeof(unsigned));
+
+    MPI_Recv(pixelArray, fragmentSize, MPI_UNSIGNED, ROOT_RANK, FRAGMENT_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+//
+//    for (int i = 0; i < height; ++i) {
+//        printf("{ ");
+//        for (int j = 0; j < width; ++j) {
+//            printf("%d ", pixelArray[(width * j) + i]);
+//        }
+//        printf(" }\n");
+//    }
+
+    std::vector<unsigned char> writableFragment = convert1DPixelArrayToImage(pixelArray, fragmentSize);
+    // TODO: delete after
+    unsigned error = lodepng::encode("img/tile" + std::to_string(worldRank) + ".png", writableFragment, (unsigned) width, (unsigned) height);
+    if (error) std::cout << "encoder error " << error << ": " << lodepng_error_text(error) << std::endl;
 
     MPI_Finalize();
     return 0;
 }
 
+std::vector<unsigned char> convert1DPixelArrayToImage(unsigned int *pixelArray, int imageSize) {
+    const int imageSizeInBytes = imageSize * bytesInPixel;
+    auto *buffer = static_cast<unsigned char *>(malloc((size_t) imageSizeInBytes));
+
+    memcpy(buffer, pixelArray, (size_t) imageSizeInBytes);
+
+    std::vector<unsigned char> image(buffer, buffer + (imageSize * bytesInPixel));
+
+    return image;
+}
+
 void generateGaussianKernel(Matrix2D<float> gaussianKernel, float standardDeviation) {
     float sum = 0.0f;
     float twoSigmaSquared = 2.0f * standardDeviation * standardDeviation;
-    gaussianKernel.elements = static_cast<float *>(malloc(gaussianKernel.width * gaussianKernel.height * sizeof(float)));
 
     // Generate non-normalized kernel
     for(size_t row = 0; row < gaussianKernel.height; ++row) {
@@ -308,7 +379,7 @@ void generateGaussianKernel(Matrix2D<float> gaussianKernel, float standardDeviat
             size_t y = row - (gaussianKernel.height / 2);
             float sumOfX2AndY2 = (x * x) + (y * y);
 
-            gaussianKernel.elements[index] = static_cast<float>(std::exp(-sumOfX2AndY2 / twoSigmaSquared) / (M_PI * twoSigmaSquared));
+            gaussianKernel.elements[index] = (float) (std::exp(-sumOfX2AndY2 / twoSigmaSquared) / (M_PI * twoSigmaSquared));
             sum += gaussianKernel.elements[index];
         }
     }

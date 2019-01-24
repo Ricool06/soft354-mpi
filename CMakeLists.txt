@@ -12,12 +12,9 @@ find_path(LODEPNG_INCLUDE_DIR lodepng.h)
 include_directories(${LODEPNG_INCLUDE_DIR})
 find_library(LODEPNG_LIB lodepng REQUIRED)
 
-find_package(GTest MODULE REQUIRED)
-
 include_directories(lib)
 
 add_subdirectory(lib)
-add_subdirectory(test)
 
 configure_file(img/tiger.png img/tiger.png COPYONLY)
 configure_file(img/flowers.png img/flowers.png COPYONLY)
@@ -27,4 +24,3 @@ configure_file(img/tiny.png img/tiny.png COPYONLY)
 add_executable(soft354_mpi main.cpp)
 target_link_libraries(${EXECUTABLE} ${LIBRARY})
 target_link_libraries(${EXECUTABLE} ${LODEPNG_LIB})
-#target_link_libraries(${EXECUTABLE} mpi)

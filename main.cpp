@@ -214,6 +214,25 @@ padImageWithTransparentPixels(unsigned **paddedImage, unsigned **originalImage, 
     return newWidthAndHeight;
 }
 
+std::vector<int>
+cropTransparentPixels(unsigned **croppedImage, unsigned **originalImage, Padding padding, unsigned imageWidth,
+                              unsigned imageHeight) {
+    const int newImageHeight = imageHeight - (padding.top + padding.bottom);
+    const int newImageWidth = imageWidth - (padding.left + padding.right);
+
+    for (size_t croppedRow = 0; croppedRow < newImageHeight; ++croppedRow) {
+        const size_t coreRow = padding.top + croppedRow;
+        unsigned *rowPointer = &(croppedImage[croppedRow][0]);
+        unsigned *oldRowPointer = &(originalImage[coreRow][padding.left]);
+        memcpy(rowPointer, oldRowPointer, newImageWidth * bytesInPixel);
+    }
+
+    const std::vector<int> newWidthAndHeight = {newImageWidth, newImageHeight};
+
+    return newWidthAndHeight;
+}
+
+
 int main(int argc, char **argv) {
     MPI_Init(&argc, &argv);
 
@@ -369,17 +388,27 @@ int main(int argc, char **argv) {
                 newBlue += writableFragment[startOfBlendPixel + 2] * gaussianKernel.elements[kernelIndex];
                 newAlpha += writableFragment[startOfBlendPixel + 3] * gaussianKernel.elements[kernelIndex];
             }
-//            printf("newred: %f\n", newRed);
             writableFragment[index] = static_cast<unsigned char>(newRed);
             writableFragment[index + 1] = static_cast<unsigned char>(newGreen);
             writableFragment[index + 2] = static_cast<unsigned char>(newBlue);
             writableFragment[index + 3] = static_cast<unsigned char>(newAlpha);
-
         }
     }
 
+    int originalHeight = height - (padding.top + padding.bottom);
+    int originalWidth = width - (padding.left + padding.right);
+    unsigned **pixelArray2D = allocateContiguous2DPixelArray(height, width);
+    unsigned **croppedImage = allocateContiguous2DPixelArray(originalHeight, originalWidth);
+    convertImageTo2DPixelArray(pixelArray2D, writableFragment, (unsigned) width, (unsigned) height);
+    cropTransparentPixels(croppedImage, pixelArray2D, padding, (unsigned) width, (unsigned) height);
+
+    auto *pixelArray1D = (unsigned *) malloc(originalHeight * originalWidth * bytesInPixel);
+    convert2DPixelArrayTo1D(pixelArray1D, croppedImage, originalWidth, originalHeight);
+
+    std::vector<unsigned char> writableCroppedFragment = convert1DPixelArrayToImage(pixelArray1D, originalWidth * originalHeight);
+
     // TODO: delete after
-    unsigned error = lodepng::encode("img/tile" + std::to_string(worldRank) + ".png", writableFragment, (unsigned) width, (unsigned) height);
+    unsigned error = lodepng::encode("img/tile" + std::to_string(worldRank) + ".png", writableCroppedFragment, (unsigned) originalWidth, (unsigned) originalHeight);
     if (error) std::cout << "encoder error " << error << ": " << lodepng_error_text(error) << std::endl;
 
     MPI_Finalize();
